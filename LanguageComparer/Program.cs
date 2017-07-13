@@ -19,102 +19,150 @@ namespace LanguageComparer
             var options = new CmdOptions();
             var isValid = CommandLine.Parser.Default.ParseArgumentsStrict(args, options);
             char[] trimChar = new char[] { ' ', '_', '\t' };
+            const string ExcelFile = ".xlsx";
+            const string JsonFile = ".json";
+            const string TestFileFolder = "TestFiles";
+            const string DictionaryFileFolder = "DictionaryFiles";
+            const string ResultFileFolder = "ResultFiles";
             if (isValid)
             {
-                Dictionary<string, Item> correctDictionary = new Dictionary<string, Item>();
-                List<CheckItem> checkList;
-
-                var fileName = string.Format($"{Directory.GetCurrentDirectory()}\\{options.TestFile}");
-
-                using (var stream = File.Open(fileName, FileMode.Open, FileAccess.Read))
+                if (options.TestFile.EndsWith(ExcelFile) || options.TestFile.EndsWith(JsonFile))
                 {
-                    using (var reader = ExcelReaderFactory.CreateOpenXmlReader(stream))
+                    Dictionary<string, Item> correctDictionary = new Dictionary<string, Item>();
+                    List<CheckItem> checkList = new List<CheckItem>();
+                    try
                     {
-                        var result = reader.AsDataSet().Tables[0].AsEnumerable();
-                        checkList = result.Select(
-                            row => new CheckItem
+                        var fileName = string.Format($"{Directory.GetCurrentDirectory()}\\{TestFileFolder}\\{options.TestFile}");
+                        if (options.TestFile.EndsWith(ExcelFile))
+                        {
+                            using (var stream = File.Open(fileName, FileMode.Open, FileAccess.Read))
                             {
-                                ModuleName = row.Field<object>(0).ToString(),
-                                EnglishPhrase = row.Field<object>(1).ToString(),
-                                EnglishPhraseKey = row.Field<object>(1).ToString().Trim(trimChar).ToUpper(),
-                                ForeignLanguagePhrase = row.Field<object>(2).ToString().Trim()
+                                using (var reader = ExcelReaderFactory.CreateOpenXmlReader(stream))
+                                {
+                                    var result = reader.AsDataSet().Tables[0].AsEnumerable();
+                                    checkList = result.Select(
+                                        row => new CheckItem
+                                        {
+                                            ModuleName = row.Field<object>(0).ToString(),
+                                            EnglishPhrase = row.Field<object>(1).ToString(),
+                                            EnglishPhraseKey = row.Field<object>(1).ToString().Trim(trimChar).ToUpper(),
+                                            ForeignLanguagePhrase = row.Field<object>(2).ToString().Trim()
+                                        }
+                                        ).ToList();
+                                }
                             }
-                            ).ToList();
-                    }
-                }
-
-                fileName = string.Format($"{Directory.GetCurrentDirectory()}\\{options.DictionaryFile}");
-                using (var stream = File.Open(fileName, FileMode.Open, FileAccess.Read))
-                {
-                    using (var reader = ExcelReaderFactory.CreateOpenXmlReader(stream))
-                    {
-                        var expected = reader.AsDataSet().Tables[0].AsEnumerable().Where(r => r.ItemArray.All(v => v != null && v != DBNull.Value))
-                            .GroupBy(x => x.Field<object>(0).ToString().Trim() + "|||"+ x.Field<object>(1).ToString().Trim(trimChar))
-                            .Select(g => g.First());
-                        correctDictionary = expected.ToDictionary<DataRow, string, Item>(
-                            row => row.Field<object>(0).ToString().Trim() + "|||" + row.Field<object>(1).ToString().Trim(trimChar).ToUpper(),
-                            row => new Item
+                        }
+                        else if (options.TestFile.EndsWith(JsonFile))
+                        {
+                            using (StreamReader r = new StreamReader(fileName))
                             {
-                                GroupName = row.Field<object>(0).ToString(),
-                                VariableName = row.Field<object>(1).ToString(),
-                                ForeignLanguagePhrase = row.Field<object>(2).ToString().Trim(),
-                                EnglishPhrase = row.Field<object>(3).ToString()
-                            });
+                                string json = r.ReadToEnd();
+                                Dictionary<string, Dictionary<string, string>> values = JsonConvert.DeserializeObject<Dictionary<string, Dictionary<string, string>>>(json);
 
-                    }
-                }
+                                foreach (KeyValuePair<string, Dictionary<string, string>> entry in values)
+                                {
+                                    foreach (KeyValuePair<string, string> subEntry in entry.Value)
+                                    {
+                                        checkList.Add(
+                                            new CheckItem
+                                            {
+                                                ModuleName = entry.Key,
+                                                EnglishPhrase = subEntry.Key,
+                                                EnglishPhraseKey = subEntry.Key.Trim(trimChar).ToUpper(), 
+                                                ForeignLanguagePhrase = subEntry.Value.Trim()
+                                            });
 
-                foreach (CheckItem word in checkList)
-                {
-                    if (correctDictionary.ContainsKey(word.ModuleName + "|||" + word.EnglishPhraseKey))
-                    {
-                        if (correctDictionary[word.ModuleName + "|||" + word.EnglishPhraseKey]?.ForeignLanguagePhrase == word.ForeignLanguagePhrase)
-                        {
-                            word.Result = Result.Match;
-                            word.DictionaryItem = correctDictionary[word.ModuleName + "|||" + word.EnglishPhraseKey];
-                            //Console.WriteLine($"{word.Result}: {word.ModuleName}, {word.EnglishPhrase}, {word.ArabicPhrase}");
+                                    }
+                                }
+                            }
                         }
-                        else
+
+                        fileName = string.Format($"{Directory.GetCurrentDirectory()}\\{DictionaryFileFolder}\\{options.DictionaryFile}");
+                        using (var stream = File.Open(fileName, FileMode.Open, FileAccess.Read))
                         {
-                            word.Result = Result.NotMatch;
-                            word.DictionaryItem = correctDictionary[word.ModuleName + "|||" + word.EnglishPhraseKey];
-                            //Console.WriteLine($"{word.Result}: {word.ModuleName}, {word.EnglishPhrase}, {word.ArabicPhrase}");
+                            using (var reader = ExcelReaderFactory.CreateOpenXmlReader(stream))
+                            {
+                                var expected = reader.AsDataSet().Tables[0].AsEnumerable().Where(r => r.ItemArray.All(v => v != null && v != DBNull.Value))
+                                    .GroupBy(x => x.Field<object>(0).ToString().Trim() + "|||" + x.Field<object>(1).ToString().Trim(trimChar))
+                                    .Select(g => g.First());
+                                correctDictionary = expected.ToDictionary<DataRow, string, Item>(
+                                    row => row.Field<object>(0).ToString().Trim() + "|||" + row.Field<object>(1).ToString().Trim(trimChar).ToUpper(),
+                                    row => new Item
+                                    {
+                                        GroupName = row.Field<object>(0).ToString(),
+                                        VariableName = row.Field<object>(1).ToString(),
+                                        ForeignLanguagePhrase = row.Field<object>(2).ToString().Trim(),
+                                        EnglishPhrase = row.Field<object>(3).ToString()
+                                    });
+
+                            }
                         }
+
+                        foreach (CheckItem word in checkList)
+                        {
+                            if (correctDictionary.ContainsKey(word.ModuleName + "|||" + word.EnglishPhraseKey))
+                            {
+                                if (correctDictionary[word.ModuleName + "|||" + word.EnglishPhraseKey]?.ForeignLanguagePhrase == word.ForeignLanguagePhrase)
+                                {
+                                    word.Result = Result.Match;
+                                    word.DictionaryItem = correctDictionary[word.ModuleName + "|||" + word.EnglishPhraseKey];
+                                    //Console.WriteLine($"{word.Result}: {word.ModuleName}, {word.EnglishPhrase}, {word.ArabicPhrase}");
+                                }
+                                else
+                                {
+                                    word.Result = Result.NotMatch;
+                                    word.DictionaryItem = correctDictionary[word.ModuleName + "|||" + word.EnglishPhraseKey];
+                                    //Console.WriteLine($"{word.Result}: {word.ModuleName}, {word.EnglishPhrase}, {word.ArabicPhrase}");
+                                }
+                            }
+                            else
+                            {
+                                word.Result = Result.NotFound;
+                                //Console.WriteLine($"{word.Result}: {word.ModuleName}, {word.EnglishPhrase}, {word.ArabicPhrase}");
+                            }
+                        }
+
+                        StringBuilder sb = new StringBuilder();
+
+                        var checkListOutput = from r in checkList
+                                              select new
+                                              {
+                                                  ModuleName = r.ModuleName,
+                                                  EnglishPhrase = r.EnglishPhrase,
+                                                  ForeignLanguagePhrase = r.ForeignLanguagePhrase,
+                                                  Result = Enum.GetName(typeof(Result), r.Result),
+                                                  ForeignLanguagePhraseInDictionary = r.DictionaryItem?.ForeignLanguagePhrase,
+                                                  GroupNameInDictionary = r.DictionaryItem?.GroupName,
+                                                  VariableNameInDictionary = r.DictionaryItem?.VariableName,
+                                                  EnglishPhraseInDictionary = r.DictionaryItem?.EnglishPhrase
+                                              };
+
+                        DataTable dt = checkListOutput.ConvertToDataTable();
+                        IEnumerable<string> columnNames = dt.Columns.Cast<DataColumn>().
+                                                          Select(column => column.ColumnName);
+                        sb.AppendLine(string.Join(";", columnNames));
+
+                        foreach (DataRow row in dt.Rows)
+                        {
+                            IEnumerable<string> fields = row.ItemArray.Select(field => field.ToString());
+                            sb.AppendLine(string.Join(";", fields));
+                        }
+                        bool exists = Directory.Exists(ResultFileFolder);
+                        if (!exists)
+                        {
+                            Directory.CreateDirectory(ResultFileFolder);
+                        }
+                        File.WriteAllText($"{ResultFileFolder}\\{options.TestFile}_result_{DateTime.Now.ToString("yyyyMMdd_HH.mm.ss.fff", CultureInfo.InvariantCulture)}.csv", sb.ToString());
                     }
-                    else
+                    catch (Exception e)
                     {
-                        word.Result = Result.NotFound;
-                        //Console.WriteLine($"{word.Result}: {word.ModuleName}, {word.EnglishPhrase}, {word.ArabicPhrase}");
+                        Console.WriteLine(e.Message);
                     }
                 }
-
-                StringBuilder sb = new StringBuilder();
-
-                var checkListOutput = from r in checkList
-                                      select new
-                                      {
-                                          ModuleName = r.ModuleName,
-                                          EnglishPhrase = r.EnglishPhrase,
-                                          ForeignLanguagePhrase = r.ForeignLanguagePhrase,
-                                          Result = Enum.GetName(typeof(Result), r.Result),
-                                          ForeignLanguagePhraseInDictionary = r.DictionaryItem?.ForeignLanguagePhrase,
-                                          GroupNameInDictionary = r.DictionaryItem?.GroupName,
-                                          VariableNameInDictionary = r.DictionaryItem?.VariableName,
-                                          EnglishPhraseInDictionary = r.DictionaryItem?.EnglishPhrase 
-                                      };
-
-                DataTable dt = checkListOutput.ConvertToDataTable();
-                IEnumerable<string> columnNames = dt.Columns.Cast<DataColumn>().
-                                                  Select(column => column.ColumnName);
-                sb.AppendLine(string.Join(";", columnNames));
-
-                foreach (DataRow row in dt.Rows)
+                else
                 {
-                    IEnumerable<string> fields = row.ItemArray.Select(field => field.ToString());
-                    sb.AppendLine(string.Join(";", fields));
+                    Console.WriteLine("Invalid Test File.");
                 }
-
-                File.WriteAllText($"result_{DateTime.Now.ToString("yyyyMMdd_HH.mm.ss.fff", CultureInfo.InvariantCulture)}.csv", sb.ToString());
             }
             else
             {
