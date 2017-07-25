@@ -18,7 +18,7 @@ namespace LanguageComparer
         {
             var options = new CmdOptions();
             var isValid = CommandLine.Parser.Default.ParseArgumentsStrict(args, options);
-            char[] trimChar = new char[] { ' ', '_', '\t' };
+            char[] trimChar = new char[] {' ', '_', '\t', '\n' };
             const string ExcelFile = ".xlsx";
             const string JsonFile = ".json";
             const string TestFileFolder = "TestFiles";
@@ -44,9 +44,9 @@ namespace LanguageComparer
                                         row => new CheckItem
                                         {
                                             ModuleName = row.Field<object>(0).ToString(),
-                                            EnglishPhrase = row.Field<object>(1).ToString(),
-                                            EnglishPhraseKey = row.Field<object>(1).ToString().Trim(trimChar).ToUpper(),
-                                            ForeignLanguagePhrase = row.Field<object>(2).ToString().Trim()
+                                            EnglishPhrase = row.Field<object>(1).ToString().Replace("\r\n", " ").Replace("\n", " "),
+                                            EnglishPhraseKey = row.Field<object>(1).ToString().Replace("\r\n", " ").Replace("\n", " ").Trim(trimChar).ToUpper(),
+                                            ForeignLanguagePhrase = row.Field<object>(2)?.ToString().Replace("\r\n", " ").Replace("\n", " ").Trim()
                                         }
                                         ).ToList();
                                 }
@@ -67,9 +67,9 @@ namespace LanguageComparer
                                             new CheckItem
                                             {
                                                 ModuleName = entry.Key,
-                                                EnglishPhrase = subEntry.Key,
-                                                EnglishPhraseKey = subEntry.Key.Trim(trimChar).ToUpper(), 
-                                                ForeignLanguagePhrase = subEntry.Value.Trim()
+                                                EnglishPhrase = subEntry.Key.Replace("\r\n", " ").Replace("\n", " "),
+                                                EnglishPhraseKey = subEntry.Key.Replace("\r\n", " ").Replace("\n", " ").Trim(trimChar).ToUpper(), 
+                                                ForeignLanguagePhrase = subEntry.Value.Trim().Replace("\r\n", " ").Replace("\n", " ")
                                             });
 
                                     }
@@ -83,16 +83,16 @@ namespace LanguageComparer
                             using (var reader = ExcelReaderFactory.CreateOpenXmlReader(stream))
                             {
                                 var expected = reader.AsDataSet().Tables[0].AsEnumerable().Where(r => r.ItemArray.All(v => v != null && v != DBNull.Value))
-                                    .GroupBy(x => x.Field<object>(0).ToString().Trim() + "|||" + x.Field<object>(1).ToString().Trim(trimChar))
+                                    .GroupBy(x => x.Field<object>(0).ToString().Trim() + "|||" + x.Field<object>(1).ToString().Replace("\r\n", " ").Replace("\n", " ").Trim(trimChar))
                                     .Select(g => g.First());
                                 correctDictionary = expected.ToDictionary<DataRow, string, Item>(
-                                    row => row.Field<object>(0).ToString().Trim() + "|||" + row.Field<object>(1).ToString().Trim(trimChar).ToUpper(),
+                                    row => row.Field<object>(0).ToString().Trim() + "|||" + row.Field<object>(1).ToString().Replace("\r\n", " ").Replace("\n", " ").Trim(trimChar).ToUpper(),
                                     row => new Item
                                     {
-                                        GroupName = row.Field<object>(0).ToString(),
-                                        VariableName = row.Field<object>(1).ToString(),
-                                        ForeignLanguagePhrase = row.Field<object>(2).ToString().Trim(),
-                                        EnglishPhrase = row.Field<object>(3).ToString()
+                                        GroupName = row.Field<object>(0).ToString().Replace("\r\n", " ").Replace("\n", " "),
+                                        VariableName = row.Field<object>(1).ToString().Replace("\r\n", " ").Replace("\n", " "),
+                                        ForeignLanguagePhrase = row.Field<object>(2).ToString().Trim().Replace("\r\n", " ").Replace("\n", " "),
+                                        EnglishPhrase = reader.AsDataSet().Tables[0].Columns.Count > 3 ? row.Field<object>(3)?.ToString().Replace("\r\n", " ").Replace("\n", " ") : row.Field<object>(1).ToString().Replace("\r\n", " ").Replace("\n", " ")
                                     });
 
                             }
